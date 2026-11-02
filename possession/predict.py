@@ -39,7 +39,7 @@ def report(labels):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--name", default="possession_v1")
+    parser.add_argument("--name", default="possession_v2")
     args = parser.parse_args()
 
     with open(PARAMS_PATH) as handle:

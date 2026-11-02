@@ -79,6 +79,7 @@ def main():
                         help="parameters held at zero, to measure what each one adds")
     parser.add_argument("--no-gaps", action="store_true", help="leave ball gaps unbridged")
     parser.add_argument("--dry", action="store_true", help="do not write params.json")
+    parser.add_argument("--out", default=PARAMS_PATH, help="where to write the chosen parameters")
     args = parser.parse_args()
 
     matches = [load_sample(number, args.seed) for number in (1, 2, 3)]
@@ -124,7 +125,7 @@ def main():
     print("final parameters, mean on all three {:.4f}".format(scores[best].mean()))
     print(json.dumps(trials[best], indent=2))
     if not args.dry:
-        with open(PARAMS_PATH, "w") as handle:
+        with open(args.out, "w") as handle:
             json.dump(trials[best], handle, indent=2)
             handle.write("\n")
 

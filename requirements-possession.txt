@@ -1,0 +1,4 @@
+# Exact versions behind our submission, on Python 3.12.10.
+numpy==2.5.4
+pandas==3.1.0
+kloppy==3.18.0
