@@ -32,6 +32,9 @@ H, A, D, X = "H", "A", "D", "X"
 # Hand-overs shorter than this are touches, not "controlled" possession (see CHALLENGE.md).
 MIN_POSSESSION_FRAMES = int(1.5 * FPS)
 
+# Chance per 10 s block of a home track and an away track trading identities in simulation.
+ID_SWITCH_RATE = float(os.environ.get("MTAH_ID_SWITCH", "0.9"))
+
 Match = namedtuple("Match", "name ball players team runs labels tags")
 # ball (T, 2) m, NaN where unseen. players (T, N, 2) m. team (N) 0 home, 1 away.
 # runs [(first, last)] inclusive. labels (T) of H/A/D/X, or None. tags (T) in [-1, 1], or None.
@@ -79,19 +82,19 @@ def load_provided(game=GAME):
 
 
 def restart_signal(tags, n_frames):
-    """+1 on the frames before a tagged set piece's midpoint, -1 after it, 0 elsewhere.
+    """+1 around where a tagged set piece restarts play, -1 once play has clearly resumed.
 
-    A set piece is the end of a stoppage, and the tag brackets the restart by a few seconds, so
-    the same interval is evidence for a dead ball early on and for live play later.
+    Set-piece tags run about 35 s and begin a few seconds before the restart: mean player movement
+    bottoms out at the start of the tag and has recovered about 8 s after it. So only the start
+    of a tag carries timing, and the rest of the interval says nothing.
     """
     out = np.zeros(n_frames, dtype=np.float32)
     for tag in tags:
         if tag["code"].strip().lower() != "set pieces":
             continue
-        first, last = max(tag["start_frame"], 0), min(tag["end_frame"], n_frames)
-        middle = (first + last) // 2
-        out[first:middle] = 1.0
-        out[middle:last] = -1.0
+        start = tag["start_frame"]
+        out[max(start - 5 * FPS, 0):max(start + 2 * FPS, 0)] = 1.0
+        out[max(start + 8 * FPS, 0):max(start + 16 * FPS, 0)] = -1.0
     return out
 
 
@@ -235,7 +238,7 @@ def _slow_noise(rng, shape, sigma=0.3):
     return knots[below] * (1 - weight) + knots[below + 1] * weight + rng.normal(0, 0.03, shape)
 
 
-def _degrade(ball, players, restarts, n_frames, seed):
+def _degrade(ball, players, team, restarts, n_frames, seed):
     """Make clean sample tracking look like the provided automatic tracking.
 
     Target figures are the ones DATA.md publishes: ball on 59% of graded frames and about 20.5 of
@@ -253,7 +256,7 @@ def _degrade(ball, players, restarts, n_frames, seed):
     gone = np.zeros(n_frames, dtype=bool)
     frame = 0
     while frame < n_frames:
-        visible = int(rng.exponential(7.0 * FPS)) + 1
+        visible = int(rng.exponential(9.0 * FPS)) + 1
         hidden = int(rng.exponential(1.6 * FPS)) + 1
         if crowded[min(frame + visible, n_frames - 1)]:
             hidden *= 2
@@ -267,16 +270,22 @@ def _degrade(ball, players, restarts, n_frames, seed):
             if rng.random() < 0.07:
                 players[start:start + block, slot] = np.nan
 
+    # Identity switches: a track wanders onto a nearby opponent, so its team is wrong for a while.
+    home, away = np.flatnonzero(team == 0), np.flatnonzero(team == 1)
+    for start in range(0, n_frames, block):
+        if rng.random() < ID_SWITCH_RATE:
+            pair = [rng.choice(home), rng.choice(away)]
+            players[start:start + block, pair] = players[start:start + block, pair[::-1]]
+
     tags = []
     for restart in restarts:
-        if rng.random() < 0.8:  # the tagging misses some restarts
-            centre = restart + int(rng.normal(0, FPS))
-            tags.append({"code": "set pieces", "start_frame": centre - 3 * FPS,
-                         "end_frame": centre + 3 * FPS})
+        if rng.random() < 0.6:  # 59 tags against about 100 restarts
+            start = restart - 4 * FPS + int(rng.normal(0, 2 * FPS))
+            tags.append({"code": "set pieces", "start_frame": start,
+                         "end_frame": start + 35 * FPS})
     for _ in range(len(restarts) // 8):  # and invents others
-        centre = int(rng.integers(0, n_frames))
-        tags.append({"code": "set pieces", "start_frame": centre - 3 * FPS,
-                     "end_frame": centre + 3 * FPS})
+        start = int(rng.integers(0, n_frames))
+        tags.append({"code": "set pieces", "start_frame": start, "end_frame": start + 35 * FPS})
     return ball, players, restart_signal(tags, n_frames)
 
 
@@ -289,7 +298,7 @@ def load_sample(number, seed=0):
     n_frames = len(ball)
 
     labels, restarts = labels_from_events(events, n_frames)
-    ball, players, tags = _degrade(ball, players, restarts, n_frames, seed + number)
+    ball, players, tags = _degrade(ball, players, team, restarts, n_frames, seed + number)
 
     graded = np.flatnonzero(labels != X)
     breaks = np.flatnonzero(np.diff(graded) > 1)

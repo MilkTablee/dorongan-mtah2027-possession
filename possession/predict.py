@@ -11,7 +11,7 @@ import sys
 import numpy as np
 
 from .data import ROOT, load_provided
-from .model import features, predict
+from .model import GAP_FRAMES, features, predict
 from .tune import PARAMS_PATH
 
 sys.path.insert(0, os.path.join(ROOT, "starter"))
@@ -45,7 +45,7 @@ def main():
     with open(PARAMS_PATH) as handle:
         params = json.load(handle)
     match = load_provided()
-    labels = predict(match, features(match), params)
+    labels = predict(match, features(match, params.get("gap_frames", GAP_FRAMES)), params)
     report(labels)
     path = write_submission(os.path.join(RESULTS_DIR, args.name + ".csv"), labels)
     print("wrote {}".format(os.path.relpath(path, ROOT)))
