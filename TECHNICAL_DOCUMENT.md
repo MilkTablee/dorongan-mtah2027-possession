@@ -41,6 +41,13 @@ model knows when it is working from little evidence.
 - the difference between each team's nearest player to the ball
 - the difference in how spread out the two teams are
 
+**Rule-based control states as extra inputs.** Teammate Nurazri's deterministic control model
+(`possession/rules_control.py`, from [nurazri/dorongan-hackathon](https://github.com/nurazri/dorongan-hackathon))
+is run on the same tracking with its default thresholds. Its per-frame state (home control, away
+control, dead ball or abstain) becomes three more signals: dead, abstain, and a signed team state.
+Its sharp rules for a settled ball far from players, and for a restart near a player, complement the
+classifier's averaged signals.
+
 **Home and away are mirrored in training.** Every training frame appears twice, once with the
 teams swapped. At prediction time we average both orientations. The model therefore cannot learn
 that one side has the ball more often, which would carry from the training matches to this one.
@@ -124,18 +131,20 @@ in training, tuning or selecting the model.
 | v2: hand-weighted evidence, Viterbi decoder | 0.271 | 0.256–0.294 |
 | v3: learned evidence, Viterbi decoder | 0.358 | 0.314–0.414 |
 | v3 + second copy, different seed | 0.362 | 0.318–0.427 |
-| **v3 + second copy with short ball gaps (submitted)** | **0.369** | **0.322–0.419** |
+| v3 + second copy with short ball gaps | 0.369 | 0.322–0.419 |
+| **+ rule-based control states as inputs (submitted)** | **0.393** | **0.354–0.446** |
 
 v3 beats v2 on every one of the 7 matches, by 0.05 to 0.14. The organisers give about 0.04 as the
 noise band for spellF1 on a full match. Adding the short-gap copy gains 0.011, which is below that
 band, but it is better or equal on all 7 matches when both versions are scored on the same
-matches. We kept it as a guard against our measured gap pattern being incomplete.
+matches. We kept it as a guard against our measured gap pattern being incomplete. Adding the rule-based
+control states gained a further 0.024, better on 6 of 7 matches by about 0.03 each.
 
-**Public 5 minutes (17 possessions), as a sanity check only:** spellF1 0.457 and macroF1 0.721. The
-model reports 18 possessions, against a true count of 17.
+**Public 5 minutes (17 possessions), as a sanity check only:** spellF1 0.500 and macroF1 0.699. The
+model reports 15 possessions, against a true count of 17.
 
-**Full match:** the model reports 38.9% `H`, 26.4% `A` and 34.8% `D`, with 317 possessions averaging
-13.1 s, and 126 stoppages. The private full-match score is unknown.
+**Full match:** the model reports 39.1% `H`, 26.3% `A` and 34.6% `D`, with 301 possessions averaging
+13.8 s, and 121 stoppages. The private full-match score is unknown.
 
 ## 6. Limitations
 

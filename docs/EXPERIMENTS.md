@@ -29,24 +29,25 @@ degradation copies this pattern.
 | 4 | v3: learned classifier, Viterbi | Metrica | 0.52–0.53 | +0.04 over v2, but only 8 of 17 possessions on the public window; dropped |
 | 5 | **v3: learned classifier, trained on IDSSE** | IDSSE | **0.358** | v2 0.271 and floor 0.178 on the same matches; beats v2 on all 7 |
 | 6 | v3 + second copy, different seed | IDSSE | 0.362 | better on 5 of 7 |
-| 7 | **v3 + second copy with short ball gaps (submitted)** | IDSSE | **0.369** | better or equal on all 7; kept as a guard against our gap measurement |
+| 7 | v3 + second copy with short ball gaps | IDSSE | 0.369 | better or equal on all 7; kept as a guard against our gap measurement |
 | 8 | run 7 with a wider decoder-cost grid (175 settings) | IDSSE | 0.373 at best | the best of 175 on the same folds, better on 5 of 7; treated as noise |
 | 9 | run 7 + long-gap features (time since ball seen, last position, 20 s window) | IDSSE | 0.356 | worse on 5 of 7 |
 | 10 | run 7 with 63 leaves instead of 31 | IDSSE | 0.374 | +0.006 with different decoder costs; noise |
 | 11 | runs 9 + 10 | IDSSE | 0.360 | worse |
+| 12 | **run 7 + teammate Nurazri's rule-based control states as inputs (submitted)** | IDSSE | **0.393** | better on 6 of 7, by about 0.03 each |
 
 ## Per match, IDSSE bench
 
-| match | floor | v2 | v3 | **submitted (run 7)** |
-|---|---|---|---|---|
-| J03WMX | 0.188 | 0.264 | 0.328 | **0.351** |
-| J03WN1 | 0.178 | 0.256 | 0.314 | **0.322** |
-| J03WOH | 0.179 | 0.277 | 0.379 | **0.396** |
-| J03WOY | 0.169 | 0.294 | 0.360 | **0.376** |
-| J03WPY | 0.168 | 0.259 | 0.346 | **0.354** |
-| J03WQQ | 0.182 | 0.271 | 0.414 | **0.419** |
-| J03WR9 | 0.179 | 0.278 | 0.363 | **0.363** |
-| **mean** | **0.178** | **0.271** | **0.358** | **0.369** |
+| match | floor | v2 | v3 | run 7 | **submitted (run 12)** |
+|---|---|---|---|---|---|
+| J03WMX | 0.188 | 0.264 | 0.328 | 0.351 | **0.380** |
+| J03WN1 | 0.178 | 0.256 | 0.314 | 0.322 | **0.354** |
+| J03WOH | 0.179 | 0.277 | 0.379 | 0.396 | **0.377** |
+| J03WOY | 0.169 | 0.294 | 0.360 | 0.376 | **0.408** |
+| J03WPY | 0.168 | 0.259 | 0.346 | 0.354 | **0.383** |
+| J03WQQ | 0.182 | 0.271 | 0.414 | 0.419 | **0.446** |
+| J03WR9 | 0.179 | 0.278 | 0.363 | 0.363 | **0.400** |
+| **mean** | **0.178** | **0.271** | **0.358** | **0.369** | **0.393** |
 
 ## Comparison with a teammate's pipeline
 

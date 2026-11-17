@@ -17,7 +17,8 @@ the ball-gap pattern measured on the provided match:
 |---|---|---|
 | Nearest player, ±50 frame vote (the published floor's algorithm) | 0.178 | 0.168–0.188 |
 | v2: hand-weighted evidence | 0.271 | 0.256–0.294 |
-| **Submitted: learned evidence, IDSSE training** | **0.369** | **0.322–0.419** |
+| Learned evidence, IDSSE training | 0.369 | 0.322–0.419 |
+| **Submitted: + rule-based control states as inputs** | **0.393** | **0.354–0.446** |
 
 The submitted model is better than v2 on every match. The full history, including what failed, is in
 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md). The reasons for each choice are in
@@ -41,6 +42,7 @@ starter code, scorer and documentation are MIT licensed by Metrica Sports: see [
 | path | what it does |
 |---|---|
 | `possession/learned.py` | **the submitted model:** features, classifier, decoder, evaluation, submission |
+| `possession/rules_control.py` | teammate Nurazri's rule-based control model, used as classifier inputs |
 | `possession/external.py` | loads the IDSSE matches and degrades them to look like the provided tracking |
 | `possession/model.py` | per-frame signals, Viterbi decoder, minimum stoppage length |
 | `possession/data.py` | loads the provided match and the Metrica samples, simulates tracking errors |

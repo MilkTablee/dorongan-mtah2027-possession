@@ -46,6 +46,12 @@ Each choice that changes the labels, with the evidence behind it. Run numbers re
 - **Evidence:** it gave no gain on Metrica (run 3), and the IDSSE matches have no equivalent tags,
   so the model could not learn what tags mean.
 
+### D-8: Use a rule-based control model as classifier inputs
+- **Decision:** feed teammate Nurazri's deterministic control states (home, away, dead, abstain) to
+  the classifier as extra signals, instead of choosing between the two approaches.
+- **Evidence:** run 12 scored 0.393 against 0.369, better on 6 of 7 matches. Alone, the rules
+  scored 0.322 on this bench.
+
 ## Open questions
 
 - **Long ball gaps:** recovering possession changes inside them, perhaps by estimating the ball's

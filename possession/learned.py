@@ -30,6 +30,8 @@ PARAMS_PATH = os.path.join(HERE, "learned_params.json")
 WINDOWS = (1, 3, 8)  # seconds
 SUBSAMPLE = 5        # train on every 5th frame; neighbours are nearly identical
 SEED = 0
+RULE_FEATURES = os.environ.get("MTAH_RULES", "1") == "1"
+_RULES_CACHE = {}
 COSTS = [{"swap": s, "stop": t, "start": t} for s in (10, 20, 40, 80, 160) for t in (6, 12, 24, 48, 96)]
 
 
@@ -41,6 +43,22 @@ def _mean(x, seconds):
     count = np.convolve(seen.astype(float), np.ones(width), mode="same")
     with np.errstate(invalid="ignore", divide="ignore"):
         return total / count, count / width
+
+
+def rule_states(match, f):
+    """Per-frame state from teammate Nurazri's rule-based control model (possession/rules_control.py)."""
+    key = id(match)
+    if key not in _RULES_CACHE:
+        from .rules_control import infer_control
+        nearest = np.stack([f["home"], f["away"]], axis=1)
+        ball = match.ball / np.array(PITCH)
+        labels = np.full(len(ball), "X", dtype="<U1")
+        for first, last in match.runs:
+            labels[first:last + 1] = infer_control(
+                ball[first:last + 1], nearest[first:last + 1], [], [(1, 0, last - first)],
+                FPS, PITCH)[0]
+        _RULES_CACHE[key] = (match, labels)
+    return _RULES_CACHE[key][1]
 
 
 def table(match, f):
@@ -59,6 +77,12 @@ def table(match, f):
                  "seen": seen, "to_line": to_line,
                  "to_goal_line": to_goal_line, "closest": np.fmin(f["home"], f["away"])}
     signed = {"margin": margin, "spread": f["spread"].astype(float)}
+
+    if RULE_FEATURES:
+        rules = rule_states(match, f)
+        symmetric.update({"rule_dead": (rules == "D").astype(float),
+                          "rule_abstain": (rules == "X").astype(float)})
+        signed["rule_team"] = (rules == "H").astype(float) - (rules == "A").astype(float)
 
     def build(sign):
         columns = []
