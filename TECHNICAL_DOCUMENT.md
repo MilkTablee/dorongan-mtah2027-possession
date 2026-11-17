@@ -1,171 +1,171 @@
-# Technical document: three-state possession decoding
+# Technical document: learned frame evidence with three-state decoding
 
-More Than a Hack 2027, Phase 1. FC Barcelona v Athletic Club.
+More Than a Hack 2027, Phase 1. Team Dorongan. FC Barcelona v Athletic Club.
 
 ## 1. Approach
 
 We treat possession as a segmentation problem. The ranking metric, spellF1, scores whole possessions
 rather than single frames, so one false change of state inside a possession can cost more than many
-wrong frames at its edges.
+wrong frames at its edges. The system has three stages:
 
-Each frame gets a score for each of three states: home possession (`H`), away possession (`A`) and
-dead ball (`D`). A Viterbi decoder then finds the best label sequence for each half, given a fixed
-cost for each change of state. Those costs do the job of the baseline's majority vote, without
-blurring the boundaries of a possession.
+1. **Classify.** A gradient-boosted classifier (scikit-learn `HistGradientBoostingClassifier`) gives
+   every frame a probability of home possession (`H`), away possession (`A`) and dead ball (`D`).
+2. **Decode.** A Viterbi decoder finds the most likely label sequence for each half from those
+   probabilities, with a fixed cost for each change of state: 10 for a swap between teams and 24
+   for stopping or restarting play.
+3. **Clean up.** Any dead-ball spell under 2 s is given to the team before it, because no real
+   stoppage is that short. An earlier version used such slivers as a cheap route between teams,
+   which split real possessions.
 
-**Why this rather than something else.** The nearest-player baseline makes two mistakes we wanted to
-remove. It treats a missing ball as a dead ball, although the ball is missing on 41% of graded frames
-and mostly during live play. It also has no notion of a possession as an interval. We chose a small,
-inspectable model over a large learned one because we have one match to label and no permitted
-labels on it, so anything with many parameters would be hard to validate.
+**Why this design.** The nearest-player baseline treats a missing ball as a dead ball, although the
+ball is missing on 41% of graded frames, and it has no notion of a possession as an interval. We
+first built a hand-weighted version of this decoder (v2 below). Replacing its hand-set evidence
+with a classifier that sees many signals at several time scales was the largest single gain we
+measured.
 
-### Evidence for each frame
+### What the classifier sees
 
-**Team evidence** is the difference between each team's nearest player to the ball, in metres. It
-counts only when a player is within a control radius of the ball, and it is discounted while the ball
-is moving fast, because a ball passing a player is not a ball under control. If the ball is missing,
-or nobody is close, the team evidence is zero. This matches the challenge rule that possession stays
-with the last team to have it during loose or contested phases.
+Every frame has a set of base signals. Each signal is used both raw and as a centred 1 s, 3 s and
+8 s average. Each average also comes with the share of that window where the signal existed, so the
+model knows when it is working from little evidence.
 
-**Dead-ball evidence** combines four signals:
+**Signals that do not depend on team:**
+- ball speed
+- mean player speed, divided by the match median so that tracking sources are comparable
+- ball out of play, and ball distance to the nearest line and to the nearest goal line
+- whether the ball is seen
+- the distance from the ball to the closest player
+- a kickoff shape, where the two teams are separated across a vertical line
 
-- **Stillness:** mean player speed over 3 s, divided by the match median. Scaling by the match makes
-  it comparable across tracking sources. This is the strongest signal we found. On the sample games,
-  relative movement is about 0.65 at a stoppage and about 1.2 in live play.
-- **Ball out of play:** the ball is more than 0.5 m past a line.
-- **Kickoff shape:** the two teams are fully separated across a vertical line.
-- **Fast ball:** a ball moving fast inside the pitch counts against a stoppage.
+**Signals that depend on team:**
+- the difference between each team's nearest player to the ball
+- the difference in how spread out the two teams are
 
-A missing ball gives no evidence towards `D`.
-
-### Decoding
-
-Decoding runs separately on each half, with three costs: swapping team, stopping play and restarting
-play. After decoding, any dead-ball spell under 2 s is given to the team before it. We added this
-after a tuned model used slivers of `D` as a cheap route between teams, which split real possessions.
+**Home and away are mirrored in training.** Every training frame appears twice, once with the
+teams swapped. At prediction time we average both orientations. The model therefore cannot learn
+that one side has the ball more often, which would carry from the training matches to this one.
 
 ## 2. Assets used and dropped
 
 | asset | status |
 |---|---|
-| Tactical tracking (ATD) | **Used.** The only input to the final model |
-| Smart Tagging | **Tried and dropped.** No measurable gain |
+| Tactical tracking (ATD) | **Used.** The only input at prediction time |
+| Smart Tagging | **Dropped.** The training matches have no equivalent tags, and an earlier test showed no gain |
 | Homography | Not used. We work in tracking coordinates |
 | Tactical video | Not an input. Used only for inspection tooling |
 | Broadcast video and tracking | Not used. Not synchronised to the tactical timeline |
 
-We also tried two additions that are switched off in the final model. The code remains in the
-repository so that these results can be checked.
-
-| variant, with the 2 s minimum stoppage | held-out spellF1, seed 0 | seed 1 |
-|---|---|---|
-| **Final model: no additions** | **0.468** | **0.513** |
-| Ball-gap bridging + Smart Tagging + team spread | 0.464 | 0.476 |
-| Ball-gap bridging + Smart Tagging | 0.437 | 0.451 |
-
-Ball-gap bridging fills ball gaps of up to 1.5 s in a straight line. Team spread uses the idea that
-the side with the ball spreads out. For Smart Tagging, mean player movement around tag starts showed
-that set-piece tags begin a few seconds before the restart, so only the tag start was used for
-timing. That measurement used movement only and no labels.
-
-These gaps are about the size of the variation between seeds, so they do not show that the additions
-harm the model. They show that the additions did not earn their extra complexity.
-
 ## 3. Training data
 
-No labels from the provided match were used to train, tune or validate the model, and nobody labelled
-any data by hand for this entry.
+**No labels from the provided match were used for training, tuning or validation, and nobody
+labelled any data by hand.**
 
-All tuning used the **three open sample games** published by Metrica Sports, which are other matches:
-[metrica-sports/sample-data](https://github.com/metrica-sports/sample-data), commit `e706dd5`. Together
-they give about 425,000 labelled frames and 851 possessions.
+**Training data: 7 IDSSE matches.** These are Bundesliga matches from Bassek et al. (2025), *An
+integrated dataset of spatiotemporal and event data in elite soccer*, Scientific Data, CC-BY 4.0.
+Together they have about 1 million frames. Their tracking carries per-frame ball possession and
+ball status produced by the data provider, DFL, which is the same kind of label as the challenge
+ground truth. Our labels are `D` whenever the ball status is dead, otherwise the last team recorded
+in possession, reset at each half.
 
-Those games ship with human-produced event data, created by Metrica. We did not label anything
-ourselves. Our code derives frame labels from those events (`labels_from_events` in
-`possession/data.py`):
+**The IDSSE tracking is degraded to look like the provided automatic tracking.** IDSSE tracking
+is corrected and nearly complete, and the provided tracking is neither. We add:
+- slowly drifting position error
+- player tracks that drop out for 10 s at a time
+- identity switches, where a home track and an away track swap for 10 s
+- ball gaps copying how the ball goes missing in the provided match
 
-- The ball dies on a ball out, a shot that leaves the pitch or scores, a foul or an offside.
-- It lives again at the next restart.
-- The owner is the team that last made a controlled action.
-- Hand-overs under 1.5 s are merged back, because a touch is not a possession.
+For the gaps, we measured three summary statistics on the provided tracking, without using any
+labels: 40.7% of graded frames missing, about 150 gaps, and a median gap of 10.7 s. We then draw
+lognormal gaps to match. Each match is also used a second time with short, frequent ball gaps
+instead, so the model does not depend on our gap measurement being right. This matters because the ball in the provided match goes missing in long,
+rare stretches, not short flickers. After degradation the nearest-player baseline scores 0.178 on
+these matches, against 0.2433 on the real one, so our bench is slightly harder than the real task.
 
-Because the sample tracking is much cleaner than the provided automatic
-tracking, we degrade it before tuning. The simulation hides the ball in bursts, more often in crowds;
-adds slowly drifting position error; removes player tracks for short periods; and swaps identities
-between home and away tracks. The published coverage figures guided these settings. The simulation
-stays optimistic: the nearest-player algorithm scores about 0.26–0.35 on it, against 0.2433 on the
-real match.
+**Development data: Metrica's open sample games.** [metrica-sports/sample-data](https://github.com/metrica-sports/sample-data)
+was used to develop and tune the earlier v1 and v2 models. For those games our code derives frame
+labels from Metrica's human-produced event data.
 
-### Tuning
+**Credit.** The idea of training on IDSSE, the file list and the checksums came from teammate Deen's
+exploratory repository, [DeenSkuad/mtah-2027-dorongan](https://github.com/DeenSkuad/mtah-2027-dorongan).
 
-We ran a random search of 300 settings, then 150 more around the best one, scored with the official
-spellF1. Each game was held out in turn: settings were chosen on two games and scored on the third.
-We repeated this on two simulation seeds, then chose between the two resulting parameter sets on a
-third seed that neither had been tuned on.
+### Model selection
+
+We used leave-one-match-out over the 7 IDSSE matches. Each match is scored by a model trained on
+the other six. The decoder costs were picked from a 5 × 5 grid on those same out-of-fold
+predictions. That is a choice of two numbers made on the reported predictions, so the learned
+figures below are slightly optimistic. The final model is trained on all seven matches.
 
 ### Use of the public ground truth
 
-We used the 5-minute public window only to check that the pipeline was correct. It played no part in
-tuning or in selecting the final model. Our final model scores lower there than our first version,
-and we kept it because the public window cannot rank submissions.
+We used the 5-minute public window only to check that the pipeline was correct. It played no part
+in training, tuning or selecting the model.
 
 ## 4. Possession rules implemented
 
-- **Loose balls:** with no player in control range there is no team evidence, so the current team
-  keeps possession unless the evidence builds against it.
-- **Challenges and deflections:** a brief touch by the other team is not enough on its own to pay the
-  cost of a team swap. There is no explicit challenge detector.
-- **Restarts:** after a stoppage, the decoder picks the team with the stronger evidence. It does not
-  use a restart event or infer who will take the set piece.
-- **Stoppages:** there is no fixed rule. A stoppage needs enough accumulated evidence, mostly
-  stillness, and must last at least 2 s.
-- **Second-half pre-kickoff:** these frames are handled by the same dead-ball evidence. No frame
-  numbers from the match are written into the model.
+- **Loose balls:** possession stays with the current team unless the evidence for the other team
+  builds up enough to pay the swap cost.
+- **Challenges and deflections:** a brief touch by the other team does not pay the swap cost. There
+  is no explicit challenge detector. The classifier learns from the provider's labels what counts
+  as a change of possession.
+- **Restarts:** after a stoppage, the decoder picks the team with the stronger evidence. We do not
+  infer who takes the set piece separately.
+- **Stoppages:** there is no hand rule. A stoppage needs enough accumulated `D` probability and must
+  last at least 2 s.
+- **Second-half pre-kickoff:** handled by the same evidence. No frame numbers from the match are
+  written into the model.
 
 ## 5. Results
 
-| measure | spellF1 | macroF1 |
+**spellF1, leave-one-match-out on 7 degraded IDSSE matches:**
+
+| model | mean | per match |
 |---|---|---|
-| Sample games, held out, mean of two seeds | 0.490 | not measured |
-| Sample games, unseen seeds 2 to 4, final settings | 0.472–0.476 | not measured |
-| Public 5 minutes (17 possessions) | 0.463 (90% interval 0.30–0.64) | 0.707 |
+| Nearest player, ±50 frame vote (the published floor's algorithm) | 0.178 | 0.168–0.188 |
+| v2: hand-weighted evidence, Viterbi decoder | 0.271 | 0.256–0.294 |
+| v3: learned evidence, Viterbi decoder | 0.358 | 0.314–0.414 |
+| v3 + second copy, different seed | 0.362 | 0.318–0.427 |
+| **v3 + second copy with short ball gaps (submitted)** | **0.369** | **0.322–0.419** |
 
-The score on the private full match is unknown. We expect it to be lower than the sample figures,
-because the sample simulation is easier than the real tracking. The seed 2 to 4 runs reuse the same
-three games, so they test different noise rather than new matches, and those settings were tuned on
-those games.
+v3 beats v2 on every one of the 7 matches, by 0.05 to 0.14. The organisers give about 0.04 as the
+noise band for spellF1 on a full match. Adding the short-gap copy gains 0.011, which is below that
+band, but it is better or equal on all 7 matches when both versions are scored on the same
+matches. We kept it as a guard against our measured gap pattern being incomplete.
 
-Across the graded match the model reports 34.1% `H`, 20.5% `A` and 45.4% `D`, with 268 possessions of
-about 13 s on average and 139 stoppages.
+**Public 5 minutes (17 possessions), as a sanity check only:** spellF1 0.457 and macroF1 0.721. The
+model reports 18 possessions, against a true count of 17.
+
+**Full match:** the model reports 38.9% `H`, 26.4% `A` and 34.8% `D`, with 317 possessions averaging
+13.1 s, and 126 stoppages. The private full-match score is unknown.
 
 ## 6. Limitations
 
-- **Dead-ball detection is the weakest part.** In the public window, the model finds only 36% of true
-  `D` frames, with 66% precision. Short stoppages with little player movement change are likely to be
-  missed.
-- **Possession edges are imprecise.** The team swap cost trades false swaps for late or missed ones.
-  Latency in the public window is about 8 frames early.
-- **Stretches without the ball are nearly blind.** With the ball missing, the model mostly holds its
-  current state, so a change of possession during a long gap is found late or not at all.
-- **Tuning labels are approximate.** They come from event data, not the corrected tracking behind the
-  real ground truth, so "dead" and "owning" may differ slightly in meaning.
-- **Three sample games is a small validation set,** and differences of about 0.04 are noise.
-- **No identity handling.** Track slots swap identities in the real data, and the model does not try
-  to correct this.
+- **The degradation is a model of the real tracking errors, not a copy of them.** Bench scores will
+  differ from the real ones. Ours is harder than the real task by the floor's measure, so we expect
+  real scores to be somewhat higher, but we cannot verify that.
+- **Long ball gaps are the hardest case.** When the ball is missing for 10 s or more, the model works
+  only from player movement and shape, and changes of possession in that time are found late or not
+  at all.
+- **Label meaning may differ slightly.** IDSSE labels come from DFL's possession and ball-status
+  definitions, which may not match exactly what the challenge's corrected tracking means by "dead"
+  and "owning".
+- **Seven training matches from one league.** That is enough to beat our hand model consistently
+  but small for a learned model.
+- **Decoder costs were chosen on the reported folds,** so the bench figures are slightly optimistic.
+- **There is no identity handling.** Track slots swap identities in the real data, and only the
+  degradation simulates this. The model does not correct it.
 
-With more time we would build a better restart detector, add evidence for who takes each restart,
-model ball trajectories across gaps with player context rather than in a straight line, and improve
-stoppage detection using the video.
+With more time we would estimate ball position across gaps from player movement, add an explicit
+restart detector that knows who takes each set piece, and train on more leagues.
 
 ## 7. Reproduction
 
 [README.md](README.md) gives the full steps. In short, on Python 3.12.10 with
-`requirements-possession.txt` installed and the match data in `data/`:
+`requirements-possession.txt` installed, the match data in `data/` and the 14 IDSSE files in
+`../idsse`:
 
 ```bash
-python -m possession.predict --name TEAM_NAME
+python -m possession.learned --source idsse --augment mixed --name Dorongan
 ```
 
-This reads `possession/params.json` and writes `evaluation/results/TEAM_NAME.csv`. Two runs produced
-byte-identical files. The README also gives the commands that regenerate `params.json` from the
-sample games.
+This trains the model and writes `evaluation/results/Dorongan.csv`. Every random step is seeded,
+and two runs produced byte-identical files.

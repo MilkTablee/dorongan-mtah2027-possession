@@ -238,12 +238,16 @@ def _slow_noise(rng, shape, sigma=0.3):
     return knots[below] * (1 - weight) + knots[below + 1] * weight + rng.normal(0, 0.03, shape)
 
 
-def _degrade(ball, players, team, restarts, n_frames, seed):
+def _degrade(ball, players, team, restarts, n_frames, seed, long_gaps=False):
     """Make clean sample tracking look like the provided automatic tracking.
 
     Target figures are the ones DATA.md publishes: ball on 59% of graded frames and about 20.5 of
     22 players tracked. The ball goes missing in bursts and more readily in a crowd, and the
     restart tags are noisy, because every automatic source here is.
+
+    long_gaps copies the gap pattern measured on the provided match instead: about 150 gaps,
+    lognormal with a median of 10.7 s, hiding 41% of graded frames. It is for sources such as
+    IDSSE whose ball is otherwise almost never missing.
     """
     rng = np.random.default_rng(seed)
     ball = ball + _slow_noise(rng, ball.shape)
@@ -256,10 +260,14 @@ def _degrade(ball, players, team, restarts, n_frames, seed):
     gone = np.zeros(n_frames, dtype=bool)
     frame = 0
     while frame < n_frames:
-        visible = int(rng.exponential(9.0 * FPS)) + 1
-        hidden = int(rng.exponential(1.6 * FPS)) + 1
-        if crowded[min(frame + visible, n_frames - 1)]:
-            hidden *= 2
+        if long_gaps:
+            visible = int(rng.exponential(25.0 * FPS)) + 1
+            hidden = int(np.exp(rng.normal(np.log(10.7 * FPS), 0.9))) + 1
+        else:
+            visible = int(rng.exponential(9.0 * FPS)) + 1
+            hidden = int(rng.exponential(1.6 * FPS)) + 1
+            if crowded[min(frame + visible, n_frames - 1)]:
+                hidden *= 2
         gone[frame + visible:frame + visible + hidden] = True
         frame += visible + hidden
     ball[gone] = np.nan
