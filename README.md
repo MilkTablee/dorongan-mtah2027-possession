@@ -8,6 +8,31 @@ The method is a gradient-boosted frame classifier feeding a three-state Viterbi 
 trained on seven open Bundesliga matches (IDSSE), never on the provided match. The approach, its
 limits and the decisions behind it are in [TECHNICAL_DOCUMENT.md](TECHNICAL_DOCUMENT.md).
 
+## Results
+
+spellF1, leaving out one of 7 held-out Bundesliga matches at a time. The tracking is degraded with
+the ball-gap pattern measured on the provided match:
+
+| model | mean | per match |
+|---|---|---|
+| Nearest player, ±50 frame vote (the published floor's algorithm) | 0.178 | 0.168–0.188 |
+| v2: hand-weighted evidence | 0.271 | 0.256–0.294 |
+| **Submitted: learned evidence, IDSSE training** | **0.369** | **0.322–0.419** |
+
+The submitted model is better than v2 on every match. The full history, including what failed, is in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md). The reasons for each choice are in
+[docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Tests
+
+```bash
+.venv/Scripts/python -m pip install pytest
+.venv/Scripts/python -m pytest tests
+```
+
+These are fast unit tests for the decoder and the classifier's inputs, and they need no match
+data.
+
 The organisers' original README is kept as [README_ORGANISERS.md](README_ORGANISERS.md). Their
 starter code, scorer and documentation are MIT licensed by Metrica Sports: see [LICENSE](LICENSE).
 
