@@ -43,7 +43,8 @@ model knows when it is working from little evidence.
 
 **Rule-based control states as extra inputs.** Teammate Nurazri's deterministic control model
 (`possession/rules_control.py`, from [nurazri/dorongan-hackathon](https://github.com/nurazri/dorongan-hackathon))
-is run on the same tracking with its default thresholds. Its per-frame state (home control, away
+is run on the same tracking with the thresholds written in that file (his earlier v2 values, without
+Smart Tagging). Its per-frame state (home control, away
 control, dead ball or abstain) becomes three more signals: dead, abstain, and a signed team state.
 Its sharp rules for a settled ball far from players, and for a restart near a player, complement the
 classifier's averaged signals.
@@ -114,10 +115,10 @@ in training, tuning or selecting the model.
 - **Challenges and deflections:** a brief touch by the other team does not pay the swap cost. There
   is no explicit challenge detector. The classifier learns from the provider's labels what counts
   as a change of possession.
-- **Restarts:** after a stoppage, the decoder picks the team with the stronger evidence. We do not
-  infer who takes the set piece separately.
-- **Stoppages:** there is no hand rule. A stoppage needs enough accumulated `D` probability and must
-  last at least 2 s.
+- **Restarts:** after a stoppage, the decoder picks the team with the stronger evidence. One input
+  is the rule model's restart trigger: an in-bounds ball moving at 1.5 m/s or more within 4 m of a player.
+- **Stoppages:** a stoppage needs enough accumulated `D` probability and must last at least 2 s. Inputs
+  include the rule model's hand rules: a ball out of play, or a settled ball at least 3 m from any player.
 - **Second-half pre-kickoff:** handled by the same evidence. No frame numbers from the match are
   written into the model.
 
